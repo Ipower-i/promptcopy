@@ -3,8 +3,6 @@
 <head>
   <title>PromptMirror</title>
   <meta charset="UTF-8" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     body {
       background: #121212;
@@ -92,77 +90,127 @@
   <div class="notes" id="notesContainer"></div>
 </div>
 
-<script>
-  const supabase = supabase.createClient('https://zatgzvipmfbzolywyfeg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdGd6dmlwbWZiem9seXd5ZmVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3MjY2NzAsImV4cCI6MjA2NDMwMjY3MH0.MnhDgM9Dg4qCmlywijFkAjwcVzcZQZSNvVt4ZwC2U44');
+<script type="module">
+  import { createClient } from '@supabase/supabase-js'
+
+  const supabaseUrl = 'https://zatgzvipmfbzolywyfeg.supabase.co'
+  const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdGd6dmlwbWZiem9seXd5ZmVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg3MjY2NzAsImV4cCI6MjA2NDMwMjY3MH0.MnhDgM9Dg4qCmlywijFkAjwcVzcZQZSNvVt4ZwC2U44'
+  const supabase = createClient(supabaseUrl, supabaseKey)
 
   async function fetchLatestPrompt() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('prompts')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(1);
-    if (data.length > 0) {
-      document.getElementById('promptDisplay').innerText = data[0].content;
+      .limit(1)
+    
+    if (error) {
+      console.error('Error fetching prompt:', error)
+      return
+    }
+    
+    if (data && data.length > 0) {
+      document.getElementById('promptDisplay').innerText = data[0].content
     }
   }
 
-  function newNote() {
-    const text = prompt("Digite sua anotação:");
+  async function newNote() {
+    const text = prompt("Digite sua anotação:")
     if (text) {
-      const noteEl = document.createElement('div');
-      noteEl.className = 'note';
-      noteEl.innerHTML = `<span>${'{text}'}</span><button onclick="deleteNoteFromUI(this)">Excluir</button>`;
-      document.getElementById('notesContainer').appendChild(noteEl);
-      supabase.from('notes').insert([{ content: text }]);
+      const { error } = await supabase
+        .from('notes')
+        .insert([{ content: text }])
+      
+      if (error) {
+        console.error('Error creating note:', error)
+        return
+      }
+
+      const noteEl = document.createElement('div')
+      noteEl.className = 'note'
+      noteEl.innerHTML = `<span>${text}</span><button onclick="window.deleteNoteFromUI(this)">Excluir</button>`
+      document.getElementById('notesContainer').appendChild(noteEl)
     }
   }
 
   async function loadNotes() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('notes')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+    
+    if (error) {
+      console.error('Error loading notes:', error)
+      return
+    }
+
     if (data) {
+      const notesContainer = document.getElementById('notesContainer')
+      notesContainer.innerHTML = ''
+      
       data.forEach(note => {
-        const noteEl = document.createElement('div');
-        noteEl.className = 'note';
-        noteEl.innerHTML = `<span>${'{note.content}'}</span><button onclick="deleteNote('${'{note.id}'}', this)">Excluir</button>`;
-        document.getElementById('notesContainer').appendChild(noteEl);
-      });
+        const noteEl = document.createElement('div')
+        noteEl.className = 'note'
+        noteEl.innerHTML = `<span>${note.content}</span><button onclick="window.deleteNote('${note.id}', this)">Excluir</button>`
+        notesContainer.appendChild(noteEl)
+      })
     }
   }
 
   async function deleteNote(id, btn) {
-    await supabase.from('notes').delete().eq('id', id);
-    btn.parentElement.remove();
+    const { error } = await supabase
+      .from('notes')
+      .delete()
+      .eq('id', id)
+    
+    if (error) {
+      console.error('Error deleting note:', error)
+      return
+    }
+    
+    btn.parentElement.remove()
   }
 
   function deleteNoteFromUI(btn) {
-    btn.parentElement.remove();
+    btn.parentElement.remove()
   }
 
   function takeScreenshot() {
     html2canvas(document.body).then(canvas => {
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL();
-      link.download = 'print.png';
-      link.click();
-    });
+      const link = document.createElement('a')
+      link.href = canvas.toDataURL()
+      link.download = 'print.png'
+      link.click()
+    })
   }
 
   function openCalendar() {
-    window.open("https://calendar.google.com", "_blank");
+    window.open("https://calendar.google.com", "_blank")
   }
 
+  // Set up realtime subscription
   supabase
     .channel('realtime:prompts')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prompts' }, payload => {
-      document.getElementById('promptDisplay').innerText = payload.new.content;
-    })
-    .subscribe();
+    .on('postgres_changes', 
+      { event: 'INSERT', schema: 'public', table: 'prompts' },
+      payload => {
+        document.getElementById('promptDisplay').innerText = payload.new.content
+      }
+    )
+    .subscribe()
 
-  fetchLatestPrompt();
-  loadNotes();
+  // Make functions available globally
+  window.newNote = newNote
+  window.deleteNote = deleteNote
+  window.deleteNoteFromUI = deleteNoteFromUI
+  window.takeScreenshot = takeScreenshot
+  window.openCalendar = openCalendar
+
+  // Initial load
+  fetchLatestPrompt()
+  loadNotes()
 </script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </body>
 </html>
